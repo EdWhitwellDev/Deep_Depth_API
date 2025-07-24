@@ -2,8 +2,8 @@ import io
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from model_manager import ModelManager
-from vo_manager import VOManager
+from .model_manager import ModelManager
+from .vo_manager import VOManager
 from fastapi.middleware.cors import CORSMiddleware
 import numpy as np
 import cv2

@@ -1,0 +1,8 @@
+Add optional focal length and baseline parameters to the depth request.
+    - If not provided return disparity map.
+
+Add stereo config to 3d reconstruction request.
+
+Wipe and restart all Optometry/trajectory stuff
+
+Write ReadMe.md for the project

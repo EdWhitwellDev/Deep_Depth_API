@@ -13,8 +13,8 @@ import open3d as o3d
 from matplotlib import pyplot as plt
 import torch
 import numpy as np
-from foundation_stereo.Utils import set_logging_format, set_seed, vis_disparity, depth2xyzmap, toOpen3dCloud
-from foundation_stereo.core.foundation_stereo import FoundationStereo
+from .foundation_stereo.Utils import set_logging_format, set_seed, vis_disparity, depth2xyzmap, toOpen3dCloud
+from .foundation_stereo.core.foundation_stereo import FoundationStereo
 code_dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(f'{code_dir}/../foundation_stereo')
 from omegaconf import OmegaConf
@@ -95,15 +95,15 @@ class ModelManager:
         new_w = w - (w % self.DIM_FACTOR)
         return image[:new_h, :new_w]
     
-    #def rectify_images(self, left_frame, right_frame):
-    #    rectifiedL = cv.remap(left_frame, self.map1L, self.map2L, cv.INTER_LINEAR)
-    #    rectifiedR = cv.remap(right_frame, self.map1R, self.map2R, cv.INTER_LINEAR)
-    #    # Crop the images to the valid ROI
-    #    rectifiedL = rectifiedL[self.y:self.y+self.h, self.x:self.x+self.w]
-    #    rectifiedR = rectifiedR[self.y:self.y+self.h, self.x:self.x+self.w]
+    def rectify_images(self, left_frame, right_frame):
+        rectifiedL = cv.remap(left_frame, self.map1L, self.map2L, cv.INTER_LINEAR)
+        rectifiedR = cv.remap(right_frame, self.map1R, self.map2R, cv.INTER_LINEAR)
+        # Crop the images to the valid ROI
+        rectifiedL = rectifiedL[self.y:self.y+self.h, self.x:self.x+self.w]
+        rectifiedR = rectifiedR[self.y:self.y+self.h, self.x:self.x+self.w]
 
-    #    return rectifiedL, rectifiedR
-    #
+        return rectifiedL, rectifiedR
+    
 
     def reverse_normals(self, mesh):
         normals = np.asarray(mesh.vertex_normals)
@@ -205,7 +205,9 @@ if __name__ == "__main__":
         sys.exit(1)
 
     model_manager = ModelManager(config_path, model_path)
-    model_manager.create_3d_model(
-        left_image=cv.imread("client/DepthImages/left1.jpg"),
-        right_image=cv.imread("client/DepthImages/right1.jpg")
-    )
+    #model_manager.create_3d_model(
+    #    left_image=cv.imread("client/DepthImages/left1.jpg"),
+    #    right_image=cv.imread("client/DepthImages/right1.jpg")
+    #)
+
+    model_manager.summary()

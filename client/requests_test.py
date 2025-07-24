@@ -9,10 +9,8 @@ import cv2 as cv
 import base64
 import matplotlib.pyplot as plt
 
-calib = np.load('./server/stereo_params_2.npz')
-print("Calibration data loaded.")
 
-calib = np.load('client/stereo_params_2.npz')
+calib = np.load('server/stereo_params_2.npz')
 K1, dist1 = calib['K1'], calib['dist1']
 K2, dist2 = calib['K2'], calib['dist2']
 R1, R2 = calib['R1'], calib['R2']
@@ -84,7 +82,7 @@ def rectify_images(left_frame, right_frame):
     return rectifiedL, rectifiedR
         
 
-def send_disp_request(left_image, right_image):
+def send_depth_request(left_image, right_image):
     left_image_b64 = encode_image(left_image)
     right_image_b64 = encode_image(right_image)
 
@@ -115,11 +113,11 @@ def test_depth(swap = False):
     right_image_path = "client/DepthImages/right1.jpg"  # Replace with image path
 
     try:
-        left_image, right_image = load_images(left_image_path, right_image_path, )
+        left_image, right_image = load_images(left_image_path, right_image_path, False)
         #right_image, left_image = rectify_images(left_image, right_image)
         if swap:
             left_image, right_image = right_image, left_image  # Swap images to simulate wrong order
-        result = send_disp_request(left_image, right_image)
+        result = send_depth_request(left_image, right_image)
 
         if result.status_code == 200:
             disp = np.load(io.BytesIO(result.content))
@@ -135,7 +133,7 @@ def test_3d_model():
     right_image_path = "client/DepthImages/right3.jpg"  # Replace with image path
 
     try:
-        left_image, right_image = load_images(left_image_path, right_image_path)
+        left_image, right_image = load_images(left_image_path, right_image_path, False)
         #right_image, left_image = rectify_images(left_image, right_image)
         result = send_3d_reconstruction_request(left_image, right_image)
 
@@ -173,10 +171,10 @@ def test_trajectory(swap=False):
         print("Trajectory request failed with status code:", response.status_code)
 
 if __name__ == "__main__":
-   test_depth(swap=True)  # Set to True to test with wrong order
+   #test_depth(swap=True)  # Set to True to test with wrong order
    test_3d_model()
-   test_trajectory(swap=True)  # Set to True to test with wrong order
-
-   trajectory = np.load("client/traj.npy")
-   #print(trajectory.shape)
-   plot_trajectory(trajectory=trajectory)
+   #test_trajectory(swap=True)  # Set to True to test with wrong order
+#
+   #trajectory = np.load("client/traj.npy")
+   ##print(trajectory.shape)
+   #plot_trajectory(trajectory=trajectory)
