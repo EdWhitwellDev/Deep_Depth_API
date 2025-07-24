@@ -1,0 +1,8 @@
+# Ignore pretrained models
+server/foundation_stereo/pretrained_models/11-33-40/*
+
+# Ignore Python cache files
+__pycache__
+
+# Ignore specific file
+stereo_params_2.npz

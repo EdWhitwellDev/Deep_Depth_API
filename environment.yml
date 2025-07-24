@@ -1,0 +1,35 @@
+name: deep_depth
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    - scikit-image
+    - omegaconf
+    - opencv-contrib-python
+    - imgaug
+    - ninja
+    - timm
+    - albumentations
+    - jupyterlab
+    - scipy
+    - joblib
+    - scikit-learn
+    - ruamel.yaml
+    - trimesh
+    - pyyaml
+    - imageio
+    - open3d
+    - transformations
+    - einops
+    - gdown
+    - nodejs
+    - pandas
+    - huggingface-hub
+    - fastapi[standard]
+    - uvicorn
+    - requests
