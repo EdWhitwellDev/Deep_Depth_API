@@ -1,9 +1,12 @@
 import io
+from typing import Optional
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
+from matplotlib import pyplot as plt
 from pydantic import BaseModel
-from .model_manager import ModelManager
-from .vo_manager import VOManager
+from .foundation_manager import FoundationModel
+from .mono_manager import MonoModel
+from .reconstruction_manager import Reconstructor
 from fastapi.middleware.cors import CORSMiddleware
 import numpy as np
 import cv2
@@ -11,46 +14,55 @@ import os
 import sys
 import base64
 
-class NumpyStereoImages(BaseModel):
-    left_image: str
-    right_image: str
+class ImageEncoded(BaseModel):
+    image: str
 
     def to_numpy(self):
-
         # Decode the base64 string
-        print("length of left image base64 string:", len(self.left_image))
-        print("length of right image base64 string:", len(self.right_image))
-        decoded_data = base64.b64decode(self.left_image)
+        decoded_data = base64.b64decode(self.image)
         # Convert bytes to numpy array
-        np_array_left = np.frombuffer(decoded_data, dtype=np.uint8)
+        np_array = np.frombuffer(decoded_data, dtype=np.uint8)
         # Decode the image from the numpy array
-        left = cv2.imdecode(np_array_left, cv2.IMREAD_COLOR)
+        img = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
+        if img is None:
+            raise ValueError("Decoded image is None")
+        return img
 
-        # Decode the base64 string
-        decoded_data = base64.b64decode(self.right_image)
-        # Convert bytes to numpy array
-        np_array_right = np.frombuffer(decoded_data, dtype=np.uint8)
-        # Decode the image from the numpy array
-        right = cv2.imdecode(np_array_right, cv2.IMREAD_COLOR)
-        print("Decoded images shapes:", left.shape, right.shape)
+class DepthImages(BaseModel):
+    left_image: ImageEncoded
+    right_image: Optional[ImageEncoded] = None
+    base_line: Optional[float] = None
+    focal_length: Optional[float] = None
+
+    def to_numpy(self):
+        left = self.left_image.to_numpy()
+        if self.right_image is not None:
+            right = self.right_image.to_numpy()
+        else:
+            right = None
         return left, right
     
-class TrajectoryImages(BaseModel):
-    images: list[str]
+class Reconstruction(BaseModel):
+    left_image: ImageEncoded
+    projection_matrix: list
 
+    right_image: Optional[ImageEncoded] = None
+    depth_map: Optional[ImageEncoded] = None
+    base_line: Optional[float] = None
+    focal_length: Optional[float] = None
+    
     def to_numpy(self):
-        images = []
-        for img_b64 in self.images:
-            decoded_data = base64.b64decode(img_b64)
-            np_array = np.frombuffer(decoded_data, dtype=np.uint8)
-            img = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
-            if img is not None:
-                images.append(img)
-        return images
-
-class StereoTrajectoryImages(BaseModel):
-    left_images: TrajectoryImages
-    right_images: TrajectoryImages
+        left = self.left_image.to_numpy()
+        projection_matrix = np.array(self.projection_matrix)
+        if self.right_image is not None:
+            right = self.right_image.to_numpy()
+        else:
+            right = None
+        if self.depth_map is not None:
+            depth = self.depth_map.to_numpy()
+        else:
+            depth = None
+        return left, right, depth, projection_matrix
 
 app = FastAPI()
 
@@ -68,64 +80,56 @@ calib = np.load('stereo_params_2.npz')
 foundation_pretrained_model_path = "foundation_stereo/pretrained_models/11-33-40"
 config_path = os.path.join(foundation_pretrained_model_path, "cfg.yaml")
 model_path = os.path.join(foundation_pretrained_model_path, "model_best_bp2.pth")
-model_manager = ModelManager(config_path, model_path, calib=calib)
-
-optometry_manager = VOManager(calib, stereo=model_manager)
+foundation_model = FoundationModel(config_path, model_path, calib=calib)
+mono_model = MonoModel()
 
 @app.get("/")
 async def root():
-    print(model_manager.summary())
+    print(foundation_model.summary())
     return {"message": "Hello World"}
 
-@app.post("/predict_foundation_stereo/")
-async def predict_foundation_stereo(numpy_images: NumpyStereoImages):
-    #print(numpy_images)
+@app.post("/predict_depth/")
+async def predict_depth(numpy_images: DepthImages):
     left_image_np, right_image_np = numpy_images.to_numpy()
-    #left_image_np, right_image_np = model_manager.rectify_images(left_image_np, right_image_np)
-    if left_image_np is None or right_image_np is None:
+    if left_image_np is None:
         return {"error": "Invalid image data"}
-    print("Received images with shapes:", left_image_np.shape, right_image_np.shape)
-    depth_map = model_manager.predict_depth(left_image_np, right_image_np)
-    print("Depth map shape:", depth_map.shape)
+    
+    if numpy_images.base_line is not None and numpy_images.focal_length is not None:
+        if right_image_np is not None:
+            depth_map = foundation_model.predict_depth(left_image_np, right_image_np, numpy_images.base_line, numpy_images.focal_length)
+        else:
+            depth_map = mono_model.predict_depth(left_image_np)
 
-    # Convert depth map to bytes
+    else:
+        if right_image_np is not None:
+            depth_map = foundation_model.predict(left_image_np, right_image_np)
+        else:
+            depth_map = mono_model.predict_depth(left_image_np)
+
     buffer = io.BytesIO()
     np.save(buffer, depth_map)
-    buffer.seek(0)  # Reset buffer position to the beginning
+    buffer.seek(0)  
 
     return StreamingResponse(buffer, media_type="application/octet-stream", headers={
         "Content-Disposition": "attachment; filename=array.npy"
     })
 
-@app.post("/compute_trajectory/")
-async def compute_trajectory(trajectory_images: StereoTrajectoryImages):
-    left_images = trajectory_images.left_images.to_numpy()
-    right_images = trajectory_images.right_images.to_numpy()
-    
-    #left_images, right_images = model_manager.rectify_images(left_images, right_images)
-
-    if not left_images or not right_images:
-        return {"error": "No valid images provided"}
-
-    print(f"Processing {len(left_images)} left images and {len(right_images)} right images for trajectory computation.")
-    trajectory = optometry_manager.compute_trajectory(left_images, right_images)
-
-    # Convert trajectory to bytes
-    buffer = io.BytesIO()
-    np.save(buffer, trajectory)
-    buffer.seek(0)
-    return StreamingResponse(buffer, media_type="application/octet-stream", headers={
-        "Content-Disposition": "attachment; filename=trajectory.npy"
-    })
 
 @app.post("/create_3d_model/")
-async def create_3d_model(numpy_images: NumpyStereoImages):
-    left_image_np, right_image_np = numpy_images.to_numpy()
-    if left_image_np is None or right_image_np is None:
-        print("bad")
+async def create_3d_model(recon_data: Reconstruction):
+    left_image_np, right_image_np, depth_map_np, projection_matrix = recon_data.to_numpy()
+    original_image = left_image_np.copy()
+    orthographic = False
+    if left_image_np is None:   
         return {"error": "Invalid image data"}
-    
-    print("Received images with shapes:", left_image_np.shape, right_image_np.shape)
-    model_manager.create_3d_model(left_image_np, right_image_np)
-    
+    if right_image_np is not None:
+        depth_map_np = foundation_model.predict_depth(left_image_np, right_image_np, recon_data.base_line, recon_data.focal_length)
+    if depth_map_np is None:
+        orthographic = True
+        depth_map_np = mono_model.predict_depth(left_image_np)
+        depth_map_np = ((depth_map_np - np.min(depth_map_np)) / (np.max(depth_map_np) - np.min(depth_map_np))) * 10
+        projection_matrix = MonoModel.generate_projection_matrix(left_image_np)
+
+    Reconstructor.create_3d_model(original_image, depth_map=depth_map_np, projection_matrix=projection_matrix, orthographic=orthographic)
+
     return {"message": "3D model created successfully"}

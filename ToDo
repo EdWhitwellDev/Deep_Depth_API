@@ -3,6 +3,17 @@ Add optional focal length and baseline parameters to the depth request.
 
 Add stereo config to 3d reconstruction request.
 
-Wipe and restart all Optometry/trajectory stuff
+Wipe all Optometry/trajectory stuff
 
-Write ReadMe.md for the project
+Write ReadMe.md for the project 
+    - Provide a brief overview of the project and its purpose.
+    - Mention the technologies used in the project.
+    - Include instructions for setting up the environment, running the application, and any dependencies required.
+[[1.05558742e+03 0.00000000e+00 7.17541672e+02 0.00000000e+00]
+ [0.00000000e+00 1.05558742e+03 3.40641720e+02 0.00000000e+00]
+ [0.00000000e+00 0.00000000e+00 1.00000000e+00 0.00000000e+00]]
+
+
+ [[1.05558742e+03 0.00000000e+00 7.17541672e+02 0.00000000e+00]
+ [0.00000000e+00 1.05558742e+03 3.40641720e+02 0.00000000e+00]
+ [0.00000000e+00 0.00000000e+00 1.00000000e+00 0.00000000e+00]]

@@ -43,17 +43,21 @@ def set_seed(random_seed):
 def toOpen3dCloud(points,colors=None,normals=None):
   cloud = o3d.geometry.PointCloud()
   cloud.points = o3d.utility.Vector3dVector(points.astype(np.float64))
+  if colors is None:
+    print("colours is None, using default color")
   if colors is not None:
+    print("shape of colors:", colors.shape, "shape of points:", points.shape)
     if colors.max()>1:
       colors = colors/255.0
     cloud.colors = o3d.utility.Vector3dVector(colors.astype(np.float64))
   if normals is not None:
+    print("normals is not None, setting normals")
     cloud.normals = o3d.utility.Vector3dVector(normals.astype(np.float64))
   return cloud
 
 
 
-def depth2xyzmap(depth:np.ndarray, K, uvs:np.ndarray=None, zmin=0.1):
+def depth2xyzmap(depth:np.ndarray, K, uvs:np.ndarray=None, zmin=0.1, orthographic=False):
   invalid_mask = (depth<zmin)
   H,W = depth.shape[:2]
   if uvs is None:

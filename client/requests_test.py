@@ -26,19 +26,29 @@ w, h = 1200, 720
 map1L, map2L = cv.initUndistortRectifyMap(K1, dist1, R1, P1, (w, h), cv.CV_16SC2)
 map1R, map2R = cv.initUndistortRectifyMap(K2, dist2, R2, P2, (w, h), cv.CV_16SC2)
 
+P1 *= 0.5
+
 
 def load_image(image_path):
     image = cv.imread(image_path)
+    image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
+    print(f"Loaded image from {image_path} with shape: {image.shape}")
     if image is None:
         raise ValueError(f"Image at {image_path} could not be loaded.")
+    return image
+
+def scale_image(image, scale=0.5):
+    image = cv.resize(image, None, fx=scale, fy=scale, interpolation=cv.INTER_LINEAR)
     return image
 
 def load_images(left, right, rect=True):
     left_image = load_image(left)
     right_image = load_image(right)
-
-    if rect:
-        left_image, right_image  = rectify_images(left_image, right_image)
+    left_image, right_image = right_image, left_image
+    left_image, right_image  = rectify_images(left_image, right_image)    
+    left_image = scale_image(left_image)
+    right_image = scale_image(right_image)
+    print("Loaded images shapes:", left_image.shape, right_image.shape)
     return left_image, right_image
 
 def encode_image(image):
@@ -63,16 +73,6 @@ def plot_result(disp, ref_image_left=None, ref_image_right=None):
         ax[2].axis('off')
     plt.show()
 
-def plot_trajectory(trajectory):
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    ax.plot(trajectory[:, 0], trajectory[:, 1], trajectory[:, 2], marker='o')
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
-    plt.title("Trajectory")
-    plt.show()
-
 def rectify_images(left_frame, right_frame):
     rectifiedL = cv.remap(left_frame, map1L, map2L, cv.INTER_LINEAR)
     rectifiedR = cv.remap(right_frame, map1R, map2R, cv.INTER_LINEAR)
@@ -86,16 +86,16 @@ def send_depth_request(left_image, right_image):
     left_image_b64 = encode_image(left_image)
     right_image_b64 = encode_image(right_image)
 
-    url = "http://localhost:8000/predict_foundation_stereo/"
-    response = requests.post(url, json={"left_image": left_image_b64, "right_image": right_image_b64})
+    url = "http://localhost:8000/predict_depth/"
+    response = requests.post(url, json={"left_image": {"image": left_image_b64}, "right_image": {"image": right_image_b64}, "base_line": BASELINE, "focal_length": P1[0, 0]})
     print("Response status code:", response.status_code)
     return response
 
-def send_trajectory_request(images_left, images_right):
-    encoded_images_left = [encode_image(img) for img in images_left]
-    encoded_images_right = [encode_image(img) for img in images_right]
-    url = "http://localhost:8000/compute_trajectory/"
-    response = requests.post(url, json={"left_images": {"images": encoded_images_left}, "right_images": {"images": encoded_images_right}})
+def send_mono_depth_request(left_image):
+    left_image_b64 = encode_image(left_image)
+
+    url = "http://localhost:8000/predict_depth/"
+    response = requests.post(url, json={"left_image": {"image": left_image_b64}, "base_line": BASELINE, "focal_length": P1[0, 0]})
     print("Response status code:", response.status_code)
     return response
 
@@ -104,36 +104,44 @@ def send_3d_reconstruction_request(left_image, right_image):
     right_image_b64 = encode_image(right_image)
 
     url = "http://localhost:8000/create_3d_model/"
-    response = requests.post(url, json={"left_image": left_image_b64, "right_image": right_image_b64})
+    print("Projection matrix shape:", P1)
+    response = requests.post(url, json={"left_image": {"image": left_image_b64}, "right_image": {"image": right_image_b64},  "projection_matrix": P1.tolist(), "base_line": BASELINE, "focal_length": P1[0, 0]})
     print("Response status code:", response.status_code)
     return response
 
 def test_depth(swap = False):
-    left_image_path = "client/DepthImages/left1.jpg"  # Replace with image path
-    right_image_path = "client/DepthImages/right1.jpg"  # Replace with image path
+    left_image_path = "client/DepthImages/left2.jpg"  # Replace with image path
+    right_image_path = "client/DepthImages/right2.jpg"  # Replace with image path
 
     try:
-        left_image, right_image = load_images(left_image_path, right_image_path, False)
+        left_image, right_image = load_images(left_image_path, right_image_path)
         #right_image, left_image = rectify_images(left_image, right_image)
-        if swap:
-            left_image, right_image = right_image, left_image  # Swap images to simulate wrong order
-        result = send_depth_request(left_image, right_image)
 
+        #result = send_depth_request(left_image, right_image)
+#
+        #if result.status_code == 200:
+        #    disp = np.load(io.BytesIO(result.content))
+        #    print("Received depth map with shape:", disp.shape)
+        #    plot_result(disp, ref_image_left=left_image, ref_image_right=right_image)
+        #else:
+        #    print("Request failed with status code:", result.status_code)
+
+        result = send_mono_depth_request(left_image)
         if result.status_code == 200:
             disp = np.load(io.BytesIO(result.content))
-            print("Received depth map with shape:", disp.shape)
-            plot_result(disp, ref_image_left=left_image, ref_image_right=right_image)
+            print("Received mono depth map with shape:", disp.shape)
+            plot_result(disp, ref_image_left=left_image)
         else:
-            print("Request failed with status code:", result.status_code)
+            print("Mono request failed with status code:", result.status_code)
     except Exception as e:
         print("An error occurred:", e)
 
 def test_3d_model():
-    left_image_path = "client/DepthImages/left3.jpg"  # Replace with image path
-    right_image_path = "client/DepthImages/right3.jpg"  # Replace with image path
+    left_image_path = "client/DepthImages/left5.jpg"  # Replace with image path
+    right_image_path = "client/DepthImages/right5.jpg"  # Replace with image path
 
     try:
-        left_image, right_image = load_images(left_image_path, right_image_path, False)
+        left_image, right_image = load_images(left_image_path, right_image_path)
         #right_image, left_image = rectify_images(left_image, right_image)
         result = send_3d_reconstruction_request(left_image, right_image)
 
@@ -144,37 +152,8 @@ def test_3d_model():
     except Exception as e:
         print("An error occurred:", e)
 
-
-def test_trajectory(swap=False):
-    image_dir_left = "client/DATA/StereoLeft/StereoLeft/15"  # Set your path
-    image_dir_right = "client/DATA/StereoRight/StereoRight/15"  # Set your path
-    
-    if swap:
-        image_dir_left, image_dir_right = image_dir_right, image_dir_left
-        
-    image_paths_left = sorted(glob.glob(os.path.join(image_dir_left, "*.jpg")))
-    image_paths_right = sorted(glob.glob(os.path.join(image_dir_right, "*.jpg")))
-    images_left = [load_image(path) for path in image_paths_left if os.path.isfile(path)]
-    images_right = [load_image(path) for path in image_paths_right if os.path.isfile(path)]
-    print("Found images:", len(images_left), "left images and", len(images_right), "right images.")
-
-    if not images_left or not images_right:
-        print("No valid images found for trajectory computation.")
-        return
-
-    response = send_trajectory_request(images_left, images_right)
-    if response.status_code == 200:
-        trajectory = np.load(io.BytesIO(response.content))
-        plot_trajectory(trajectory)
-        print("Received trajectory with length:", trajectory.shape)
-    else:
-        print("Trajectory request failed with status code:", response.status_code)
-
 if __name__ == "__main__":
    #test_depth(swap=True)  # Set to True to test with wrong order
    test_3d_model()
    #test_trajectory(swap=True)  # Set to True to test with wrong order
-#
-   #trajectory = np.load("client/traj.npy")
-   ##print(trajectory.shape)
-   #plot_trajectory(trajectory=trajectory)
+
